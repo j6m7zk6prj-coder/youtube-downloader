@@ -21,14 +21,27 @@ jobs:
           python-version: "3.12"
 
       - name: Installer les dépendances
-        run: python -m pip install -U pip pyinstaller yt-dlp imageio-ffmpeg
+        run: python -m pip install -U pip pyinstaller pywebview yt-dlp imageio-ffmpeg
 
       - name: Compiler YouTubeDownloader.exe
         run: >
           pyinstaller --noconfirm --clean --onefile --windowed
           --name YouTubeDownloader
-          --collect-all yt_dlp --collect-all imageio_ffmpeg
+          --icon icon.ico
+          --add-data "ui.html;."
+          --collect-all yt_dlp --collect-all imageio_ffmpeg --collect-all webview
           YouTubeDownloader.py
+
+      - name: Test de démarrage (interface + pont JavaScript)
+        id: selftest
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "dist\YouTubeDownloader.exe" -ArgumentList "--selftest" -PassThru
+          if (-not $p.WaitForExit(90000)) { $p.Kill(); Write-Host "Délai dépassé"; exit 1 }
+          $r = Get-Content selftest_result.txt -ErrorAction SilentlyContinue
+          Write-Host "Résultat : $r"
+          if ($r -ne "OK") { exit 1 }
 
       - name: Publier dans Actions (artefact)
         uses: actions/upload-artifact@v4
@@ -41,5 +54,7 @@ jobs:
         with:
           tag_name: v${{ github.run_number }}
           name: YouTubeDownloader v${{ github.run_number }}
-          body: Téléchargez **YouTubeDownloader.exe** ci-dessous et double-cliquez dessus.
+          body: |
+            Téléchargez **YouTubeDownloader.exe** ci-dessous et double-cliquez dessus.
+            Test de démarrage automatique : ${{ steps.selftest.outcome }}
           files: dist/YouTubeDownloader.exe

@@ -1,0 +1,597 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YouTube Downloader</title>
+<style>
+:root {
+  --ink: #ffffff;
+  --ink-2: rgba(235, 235, 245, 0.66);
+  --ink-3: rgba(235, 235, 245, 0.38);
+  --base: #0c0a1c;
+  --rose: #ff375f;
+  --ember: #ff7a3d;
+  --violet: #7d5cff;
+  --sky: #0a84ff;
+  --mint: #32d74b;
+
+  --glass: rgba(255, 255, 255, 0.075);
+  --glass-hi: rgba(255, 255, 255, 0.16);
+  --edge: rgba(255, 255, 255, 0.16);
+  --edge-top: rgba(255, 255, 255, 0.42);
+  --blur: blur(38px) saturate(190%);
+
+  --r-xl: 28px;
+  --r-lg: 20px;
+  --r-md: 14px;
+  --r-pill: 999px;
+
+  --font: "SF Pro Display", "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--font);
+  color: var(--ink);
+  background: var(--base);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  font-size: 14px;
+  letter-spacing: -0.005em;
+}
+button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+button:disabled { cursor: default; }
+:focus-visible { outline: 2px solid rgba(255,255,255,.85); outline-offset: 2px; }
+
+/* ---------- Aurora: the colour that the glass refracts ---------- */
+.aurora { position: fixed; inset: -20%; z-index: 0; filter: blur(70px); }
+.aurora i { position: absolute; border-radius: 50%; opacity: .85; }
+.aurora .b1 { width: 52vw; height: 52vw; left: 2%;  top: 8%;  background: var(--rose);   animation: drift1 26s ease-in-out infinite alternate; }
+.aurora .b2 { width: 48vw; height: 48vw; right: 0;  top: -4%; background: var(--violet); animation: drift2 31s ease-in-out infinite alternate; }
+.aurora .b3 { width: 46vw; height: 46vw; right: 10%; bottom: -6%; background: var(--sky); animation: drift3 29s ease-in-out infinite alternate; }
+.aurora .b4 { width: 26vw; height: 26vw; left: 26%; bottom: 4%; background: var(--ember); opacity: .7; animation: drift2 23s ease-in-out infinite alternate-reverse; }
+@keyframes drift1 { to { transform: translate(14vw, 10vh) scale(1.12); } }
+@keyframes drift2 { to { transform: translate(-12vw, 14vh) scale(.92); } }
+@keyframes drift3 { to { transform: translate(-16vw, -10vh) scale(1.1); } }
+.grain { position: fixed; inset: 0; z-index: 0; background: radial-gradient(120% 90% at 50% 0%, transparent 40%, rgba(5,4,15,.55) 100%); }
+
+/* ---------- Glass material ---------- */
+.glass {
+  position: relative;
+  background: linear-gradient(160deg, rgba(255,255,255,.13), rgba(255,255,255,.04) 45%, rgba(255,255,255,.07));
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--edge);
+  border-top-color: var(--edge-top);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.28),
+    inset 0 -1px 0 rgba(255,255,255,.05),
+    0 24px 60px -18px rgba(8, 4, 30, .55);
+}
+.glass::before { /* specular sheen along the top-left rim */
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(140% 60% at 0% 0%, rgba(255,255,255,.18), transparent 55%);
+  mix-blend-mode: screen;
+}
+
+/* ---------- Window chrome ---------- */
+.app { position: relative; z-index: 1; height: 100vh; display: flex; flex-direction: column; }
+.titlebar { height: 46px; flex: none; display: flex; align-items: center; padding: 0 18px; position: relative; }
+.lights { display: flex; gap: 8px; position: relative; z-index: 2; }
+.light { width: 13px; height: 13px; border-radius: 50%; display: grid; place-items: center; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.25); }
+.light svg { width: 7px; height: 7px; opacity: 0; transition: opacity .15s; }
+.lights:hover .light svg { opacity: .7; }
+.light.close { background: #ff5f57; }
+.light.min { background: #febc2e; }
+.light.zoom { background: rgba(255,255,255,.22); cursor: default; }
+.wtitle { position: absolute; inset: 0; display: grid; place-items: center; font-size: 13px; font-weight: 600; color: var(--ink-2); pointer-events: none; }
+
+main { flex: 1; display: flex; flex-direction: column; gap: 16px; padding: 4px 26px 24px; min-height: 0; }
+
+/* ---------- Link field: the hero ---------- */
+.search {
+  border-radius: var(--r-pill);
+  display: flex; align-items: center; gap: 12px;
+  height: 62px; padding: 0 8px 0 22px;
+  transition: box-shadow .25s, border-color .25s;
+}
+.search:focus-within { border-color: rgba(255,255,255,.4); box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 0 0 4px rgba(255,255,255,.08), 0 24px 60px -18px rgba(8,4,30,.55); }
+.search > svg { width: 22px; height: 22px; flex: none; color: var(--ink-2); }
+.search input {
+  flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: var(--ink);
+  font: 500 18px/1 var(--font); letter-spacing: -0.01em; user-select: text;
+}
+.search input::placeholder { color: var(--ink-3); }
+.pill-btn {
+  height: 46px; padding: 0 20px; border-radius: var(--r-pill);
+  background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.18);
+  font-weight: 600; font-size: 14px; display: inline-flex; align-items: center; gap: 8px;
+  transition: background .2s, transform .15s;
+}
+.pill-btn:hover { background: rgba(255,255,255,.22); }
+.pill-btn:active { transform: scale(.97); }
+.pill-btn svg { width: 16px; height: 16px; }
+
+/* ---------- Two panes ---------- */
+.panes { flex: 1; min-height: 0; display: grid; grid-template-columns: 1.08fr 1fr; gap: 16px; }
+
+.preview { border-radius: var(--r-xl); padding: 14px; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.thumb {
+  position: relative; aspect-ratio: 16 / 9; border-radius: var(--r-lg); overflow: hidden;
+  background: rgba(0,0,0,.22); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
+}
+.thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .4s; }
+.thumb.has-img img { opacity: 1; }
+.thumb .badge {
+  position: absolute; right: 10px; bottom: 10px; padding: 4px 9px; border-radius: 8px;
+  font-size: 12px; font-weight: 600; background: rgba(10,8,25,.55); backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.14); display: none;
+}
+.thumb.has-img .badge.on { display: block; }
+.thumb .placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: var(--ink-3); }
+.thumb .placeholder svg { width: 54px; height: 54px; }
+.thumb.has-img .placeholder, .thumb.loading .placeholder { display: none; }
+.thumb .spin { position: absolute; inset: 0; display: none; place-items: center; }
+.thumb.loading .spin { display: grid; }
+.spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(255,255,255,.18); border-top-color: #fff; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.meta { padding: 0 6px 4px; min-height: 0; }
+.meta h2 {
+  font-size: 19px; font-weight: 650; line-height: 1.25; letter-spacing: -0.015em;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.meta p { margin-top: 6px; color: var(--ink-2); font-size: 13.5px; line-height: 1.45; }
+.meta p.err { color: #ffb4b4; }
+.meta p .views { margin-left: 14px; color: var(--ink-3); }
+.summary { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 14px 4px 0; border-top: 1px solid rgba(255,255,255,.1); }
+.summary span { color: var(--ink-2); font-size: 13px; }
+.summary strong { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.summary strong small { font-size: 14px; font-weight: 600; color: var(--ink-2); margin-left: 4px; }
+
+/* ---------- Format pane ---------- */
+.formats { border-radius: var(--r-xl); padding: 16px; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+
+.seg {
+  position: relative; display: grid; grid-template-columns: 1fr 1fr; padding: 4px; height: 42px;
+  border-radius: var(--r-pill); background: rgba(0,0,0,.2); box-shadow: inset 0 1px 2px rgba(0,0,0,.25);
+}
+.seg .knob {
+  position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px); border-radius: var(--r-pill);
+  background: linear-gradient(180deg, rgba(255,255,255,.3), rgba(255,255,255,.16));
+  border: 1px solid rgba(255,255,255,.3); box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 4px 14px rgba(0,0,0,.25);
+  transition: transform .45s cubic-bezier(.3, 1.5, .5, 1);
+}
+.seg[data-mode="audio"] .knob { transform: translateX(100%); }
+.seg button { position: relative; z-index: 1; font-weight: 600; font-size: 14px; color: var(--ink-2); transition: color .2s; display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.seg button svg { width: 15px; height: 15px; }
+.seg button[aria-selected="true"] { color: var(--ink); }
+
+.chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.chips.audio { grid-template-columns: repeat(3, 1fr); }
+.chip {
+  position: relative; border-radius: var(--r-md); padding: 10px 6px 9px; text-align: center;
+  background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
+  transition: background .2s, border-color .2s, transform .15s, opacity .2s;
+}
+.chip:hover:not(:disabled) { background: rgba(255,255,255,.12); }
+.chip:active:not(:disabled) { transform: scale(.96); }
+.chip b { display: block; font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+.chip span { display: block; margin-top: 2px; font-size: 11.5px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chip[aria-pressed="true"] {
+  background: linear-gradient(180deg, rgba(255,255,255,.32), rgba(255,255,255,.14));
+  border-color: rgba(255,255,255,.5);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 8px 22px -8px rgba(0,0,0,.45);
+}
+.chip[aria-pressed="true"] span { color: rgba(255,255,255,.85); }
+.chip:disabled { opacity: .28; }
+
+.opts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.opt-label { color: var(--ink-2); font-size: 13px; margin-right: 2px; }
+.mini-seg { display: inline-flex; padding: 3px; border-radius: var(--r-pill); background: rgba(0,0,0,.2); }
+.mini-seg button { padding: 5px 12px; border-radius: var(--r-pill); font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+.mini-seg button[aria-pressed="true"] { background: rgba(255,255,255,.22); color: var(--ink); box-shadow: inset 0 1px 0 rgba(255,255,255,.35); }
+.toggle { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: var(--r-pill); background: rgba(255,255,255,.06); font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+.toggle .sw { width: 30px; height: 18px; border-radius: 9px; background: rgba(255,255,255,.18); position: relative; transition: background .25s; }
+.toggle .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .3s cubic-bezier(.3,1.5,.5,1); }
+.toggle[aria-pressed="true"] { color: var(--ink); }
+.toggle[aria-pressed="true"] .sw { background: var(--mint); }
+.toggle[aria-pressed="true"] .sw::after { transform: translateX(12px); }
+.hidden { display: none !important; }
+.spacer { flex: 1; }
+
+/* The one loud thing: the download button */
+.cta {
+  position: relative; overflow: hidden; height: 56px; border-radius: var(--r-pill);
+  font-size: 16.5px; font-weight: 700; letter-spacing: -0.01em;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: linear-gradient(135deg, var(--rose), var(--ember));
+  border: 1px solid rgba(255,255,255,.35);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.55), inset 0 -8px 18px rgba(120, 0, 30, .25), 0 16px 34px -10px rgba(255, 55, 95, .65);
+  transition: transform .15s, filter .2s, opacity .2s;
+}
+.cta::after { content: ""; position: absolute; left: 8%; right: 8%; top: 3px; height: 46%; border-radius: var(--r-pill); background: linear-gradient(180deg, rgba(255,255,255,.42), rgba(255,255,255,0)); pointer-events: none; }
+.cta:hover:not(:disabled) { filter: brightness(1.07); }
+.cta:active:not(:disabled) { transform: scale(.985); }
+.cta:disabled { opacity: .45; filter: saturate(.5); }
+.cta svg { width: 20px; height: 20px; }
+
+/* ---------- Status bar ---------- */
+.status { border-radius: var(--r-lg); height: 64px; flex: none; padding: 0 10px 0 14px; display: flex; align-items: center; gap: 12px; }
+.status .row { display: none; align-items: center; gap: 12px; width: 100%; min-width: 0; }
+.status[data-state="idle"] .r-idle, .status[data-state="busy"] .r-busy, .status[data-state="done"] .r-done, .status[data-state="error"] .r-error { display: flex; }
+.folder { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 12px; border-radius: 12px; transition: background .2s; text-align: left; }
+.folder:hover { background: rgba(255,255,255,.08); }
+.folder svg { width: 22px; height: 22px; flex: none; color: #64d2ff; }
+.folder small { display: block; font-size: 11.5px; color: var(--ink-3); }
+.folder strong { display: block; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 560px; }
+.ghost { height: 38px; padding: 0 16px; border-radius: var(--r-pill); font-size: 13px; font-weight: 600; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.14); white-space: nowrap; transition: background .2s; }
+.ghost:hover { background: rgba(255,255,255,.18); }
+
+.prog { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+.prog .line { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.prog .line .what { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prog .line .nums { color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: pre; }
+.bar { height: 8px; border-radius: 4px; background: rgba(0,0,0,.28); overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,.3); }
+.bar i { display: block; height: 100%; width: 0%; border-radius: 4px; background: linear-gradient(90deg, var(--rose), var(--ember)); box-shadow: 0 0 12px rgba(255, 90, 80, .7); transition: width .3s ease-out; }
+.bar.indet i { width: 35% !important; animation: indet 1.2s ease-in-out infinite; }
+@keyframes indet { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+
+.done-ico { width: 34px; height: 34px; border-radius: 50%; flex: none; display: grid; place-items: center; background: var(--mint); box-shadow: 0 0 18px rgba(50,215,75,.55); }
+.done-ico svg { width: 18px; height: 18px; }
+.err-ico { background: #ff453a; box-shadow: 0 0 18px rgba(255,69,58,.5); }
+.msg { flex: 1; min-width: 0; }
+.msg strong { display: block; font-size: 14px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.msg small { display: block; font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora i { animation: none; }
+  * { transition-duration: .01ms !important; }
+}
+</style>
+</head>
+<body>
+<div class="aurora" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i><i class="b4"></i></div>
+<div class="grain" aria-hidden="true"></div>
+
+<div class="app">
+  <header class="titlebar pywebview-drag-region">
+    <div class="lights">
+      <button class="light close" id="btnClose" aria-label="Fermer"><svg viewBox="0 0 10 10"><path d="M2 2l6 6M8 2l-6 6" stroke="#4d0000" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+      <button class="light min" id="btnMin" aria-label="Réduire"><svg viewBox="0 0 10 10"><path d="M2 5h6" stroke="#5a3a00" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+      <span class="light zoom" aria-hidden="true"></span>
+    </div>
+    <div class="wtitle">YouTube Downloader</div>
+  </header>
+
+  <main>
+    <section class="search glass">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
+      <input id="url" type="url" placeholder="Collez un lien YouTube" spellcheck="false" autocomplete="off" aria-label="Lien YouTube">
+      <button class="pill-btn" id="btnPaste">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/></svg>
+        Coller
+      </button>
+    </section>
+
+    <div class="panes">
+      <section class="preview glass" aria-live="polite">
+        <div class="thumb" id="thumb">
+          <img id="thumbImg" alt="">
+          <div class="placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="4"/><path d="M10 9.5v5l4.5-2.5z" fill="currentColor"/></svg></div>
+          <div class="spin"><span class="spinner"></span></div>
+          <span class="badge" id="badgeDur"></span>
+        </div>
+        <div class="meta">
+          <h2 id="title">Prêt quand vous l'êtes</h2>
+          <p id="sub">Collez un lien : l'aperçu, les qualités disponibles et la taille de chaque fichier s'afficheront ici.</p>
+        </div>
+      </section>
+
+      <section class="formats glass">
+        <div class="seg" id="seg" data-mode="video" role="tablist">
+          <span class="knob"></span>
+          <button role="tab" aria-selected="true" data-mode="video">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="2.5" y="6" width="13" height="12" rx="3"/><path d="M15.5 10.5l6-3.5v10l-6-3.5z"/></svg>Vidéo
+          </button>
+          <button role="tab" aria-selected="false" data-mode="audio">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>Audio
+          </button>
+        </div>
+
+        <div class="chips" id="chips"></div>
+
+        <div class="opts">
+          <span class="opt-label video-only">Format</span>
+          <div class="mini-seg video-only" id="container">
+            <button data-c="mp4" aria-pressed="true">MP4</button>
+            <button data-c="mkv" aria-pressed="false">MKV</button>
+          </div>
+          <span class="spacer"></span>
+          <button class="toggle video-only" id="tSubs" aria-pressed="false"><span class="sw"></span>Sous-titres</button>
+          <button class="toggle hidden" id="tList" aria-pressed="false"><span class="sw"></span>Toute la playlist</button>
+        </div>
+
+        <span class="spacer"></span>
+        <div class="summary" id="summary"><span id="sumLabel">Taille estimée</span><strong id="sumVal">–</strong></div>
+        <button class="cta" id="btnDl" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M6.5 10.5L12 16l5.5-5.5M5 20h14"/></svg>
+          <span id="ctaText">Télécharger</span>
+        </button>
+      </section>
+    </div>
+
+    <footer class="status glass" id="status" data-state="idle">
+      <div class="row r-idle">
+        <button class="folder" id="btnFolder" title="Changer de dossier">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4h3.6a2 2 0 0 1 1.5.7L12 6.3h6.5A2.5 2.5 0 0 1 21 8.8v8.7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/></svg>
+          <span><small>Enregistrer dans</small><strong id="folder">Téléchargements</strong></span>
+        </button>
+        <span class="spacer"></span>
+        <button class="ghost" id="btnFolder2">Changer</button>
+        <button class="ghost" id="btnOpen">Ouvrir le dossier</button>
+      </div>
+
+      <div class="row r-busy">
+        <div class="prog">
+          <div class="line"><span class="what" id="pWhat">Préparation…</span><span class="nums" id="pNums"></span></div>
+          <div class="bar indet" id="pBar"><i></i></div>
+        </div>
+        <button class="ghost" id="btnCancel">Annuler</button>
+      </div>
+
+      <div class="row r-done">
+        <span class="done-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#04310c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+        <div class="msg"><strong id="dTitle">Téléchargé</strong><small id="dSub"></small></div>
+        <button class="ghost" id="btnReveal">Afficher dans le dossier</button>
+        <button class="ghost" id="btnDoneOk">OK</button>
+      </div>
+
+      <div class="row r-error">
+        <span class="done-ico err-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="M12 7v6M12 17.5v.01"/></svg></span>
+        <div class="msg"><strong id="eTitle">Le téléchargement a échoué</strong><small id="eSub"></small></div>
+        <button class="ghost" id="btnErrOk">OK</button>
+      </div>
+    </footer>
+  </main>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const api = () => (window.pywebview && window.pywebview.api) || null;
+
+const VIDEO = [
+  { id: "max",  label: "Max",   hint: "Meilleure" },
+  { id: 4320,   label: "8K",    hint: "4320p" },
+  { id: 2160,   label: "4K",    hint: "2160p" },
+  { id: 1440,   label: "1440p", hint: "2K" },
+  { id: 1080,   label: "1080p", hint: "Full HD" },
+  { id: 720,    label: "720p",  hint: "HD" },
+  { id: 480,    label: "480p",  hint: "SD" },
+  { id: 360,    label: "360p",  hint: "Léger" },
+];
+const AUDIO = [
+  { id: "mp3", label: "MP3", hint: "320 kbit/s" },
+  { id: "m4a", label: "M4A", hint: "AAC d'origine" },
+  { id: "wav", label: "WAV", hint: "Sans perte" },
+];
+
+const S = { mode: "video", q: "max", aq: "mp3", container: "mp4", subs: false, list: false, info: null, busy: false, token: 0, lastFile: null };
+const nf = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 });
+
+function fmtSize(b) {
+  if (!b) return "";
+  const u = ["o", "Ko", "Mo", "Go", "To"]; let i = 0;
+  while (b >= 1024 && i < 4) { b /= 1024; i++; }
+  return nf.format(b) + " " + u[i];
+}
+function fmtTime(s) {
+  if (s == null || !isFinite(s)) return "";
+  s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+  return h ? `${h}:${String(m).padStart(2, "0")}:${String(x).padStart(2, "0")}` : `${m}:${String(x).padStart(2, "0")}`;
+}
+function looksLikeUrl(v) { return /^(https?:\/\/)?([\w-]+\.)?(youtube\.com|youtu\.be|music\.youtube\.com)\//i.test(v.trim()); }
+
+/* ---------- Chips ---------- */
+function renderChips() {
+  const box = $("chips");
+  const list = S.mode === "video" ? VIDEO : AUDIO;
+  box.className = "chips" + (S.mode === "audio" ? " audio" : "");
+  box.innerHTML = "";
+  const sizes = S.info && S.info.sizes;
+  for (const c of list) {
+    const b = document.createElement("button");
+    b.className = "chip";
+    let hint = c.hint, disabled = false;
+    if (S.mode === "video" && sizes) {
+      if (c.id === "max") {
+        if (S.info.max_label) hint = S.info.max_label;
+      } else if (!(String(c.id) in sizes)) {
+        disabled = true;
+      } else if (sizes[c.id]) {
+        hint = "≈ " + fmtSize(sizes[c.id]);
+      }
+    }
+    if (S.mode === "audio" && S.info && S.info.audio_size && c.id === "m4a") hint = "≈ " + fmtSize(S.info.audio_size);
+    b.innerHTML = `<b>${c.label}</b><span>${hint}</span>`;
+    b.disabled = disabled;
+    const cur = S.mode === "video" ? S.q : S.aq;
+    b.setAttribute("aria-pressed", String(cur === c.id));
+    b.onclick = () => { if (S.mode === "video") S.q = c.id; else S.aq = c.id; renderChips(); updateCta(); };
+    box.appendChild(b);
+  }
+}
+
+function updateCta() {
+  let t;
+  if (S.mode === "audio") t = `Télécharger en ${S.aq.toUpperCase()}`;
+  else {
+    const c = VIDEO.find(v => v.id === S.q);
+    const q = S.q === "max" ? (S.info && S.info.max_label ? `${S.info.max_label}` : "qualité max") : c.label;
+    t = `Télécharger en ${q} ${S.container.toUpperCase()}`;
+  }
+  if (S.list && S.info && S.info.is_playlist) t += ` (${S.info.count} vidéos)`;
+  $("ctaText").textContent = t;
+  let size = 0;
+  if (S.info && !S.info.is_playlist) {
+    if (S.mode === "audio") size = S.aq === "m4a" ? S.info.audio_size : S.aq === "mp3" ? (S.info.duration || 0) * 40000 : (S.info.duration || 0) * 176400;
+    else if (S.info.sizes) size = S.info.sizes[String(S.q === "max" ? S.info.max_height : S.q)] || 0;
+  }
+  $("sumLabel").textContent = S.info && S.info.is_playlist ? "Playlist" : "Taille estimée";
+  $("sumVal").innerHTML = S.info && S.info.is_playlist ? `${S.info.count}<small>vidéos</small>` : size ? "≈ " + fmtSize(size) : "–";
+  $("btnDl").disabled = S.busy || !looksLikeUrl($("url").value);
+}
+
+function setMode(m) {
+  S.mode = m;
+  $("seg").dataset.mode = m;
+  for (const b of $("seg").querySelectorAll("button")) b.setAttribute("aria-selected", String(b.dataset.mode === m));
+  document.querySelectorAll(".video-only").forEach(e => e.classList.toggle("hidden", m !== "video"));
+  renderChips(); updateCta();
+}
+
+/* ---------- Preview ---------- */
+function resetPreview() {
+  S.info = null;
+  $("thumb").className = "thumb";
+  $("thumbImg").removeAttribute("src");
+  $("badgeDur").classList.remove("on");
+  $("title").textContent = "Prêt quand vous l'êtes";
+  $("sub").className = ""; $("sub").textContent = "Collez un lien : l'aperçu, les qualités disponibles et la taille de chaque fichier s'afficheront ici.";
+  $("tList").classList.add("hidden");
+  renderChips(); updateCta();
+}
+
+async function analyze() {
+  const url = $("url").value.trim();
+  if (!looksLikeUrl(url) || !api()) return;
+  const token = ++S.token;
+  S.info = null;
+  $("thumb").className = "thumb loading";
+  $("title").textContent = "Analyse du lien…";
+  $("sub").className = ""; $("sub").textContent = "Recherche des qualités disponibles.";
+  renderChips();
+  let info;
+  try { info = await api().analyze(url); } catch (e) { info = { error: String(e) }; }
+  if (token !== S.token) return;
+  if (!info || info.error) {
+    $("thumb").className = "thumb";
+    $("title").textContent = "Lien illisible";
+    $("sub").className = "err";
+    $("sub").textContent = (info && info.error) || "Vérifiez le lien et réessayez.";
+    updateCta();
+    return;
+  }
+  S.info = info;
+  const img = $("thumbImg");
+  img.onload = () => $("thumb").className = "thumb has-img";
+  img.onerror = () => $("thumb").className = "thumb";
+  if (info.thumbnail) img.src = info.thumbnail; else $("thumb").className = "thumb";
+  $("badgeDur").textContent = info.is_playlist ? `${info.count} vidéos` : fmtTime(info.duration);
+  $("badgeDur").classList.toggle("on", !!$("badgeDur").textContent);
+  $("title").textContent = info.title || "Sans titre";
+  $("sub").className = "";
+  $("sub").textContent = info.is_playlist ? `Playlist de ${info.channel || "YouTube"}` : (info.channel || "");
+  if (!info.is_playlist && info.views) { const v = document.createElement("span"); v.className = "views"; v.textContent = nf.format(info.views) + " vues"; $("sub").appendChild(v); }
+  $("tList").classList.toggle("hidden", !info.has_list);
+  if (info.is_playlist && !S.list) { S.list = true; $("tList").setAttribute("aria-pressed", "true"); }
+  if (S.q !== "max" && info.sizes && !(String(S.q) in info.sizes)) S.q = "max";
+  renderChips(); updateCta();
+}
+
+/* ---------- Download ---------- */
+function setStatus(state) { $("status").dataset.state = state; }
+
+async function startDownload() {
+  if (S.busy || !api()) return;
+  const url = $("url").value.trim();
+  if (!looksLikeUrl(url)) return;
+  S.busy = true; updateCta();
+  setStatus("busy");
+  $("pWhat").textContent = "Préparation…"; $("pNums").textContent = "";
+  $("pBar").classList.add("indet"); $("pBar").firstElementChild.style.width = "0%";
+  await api().download(url, {
+    mode: S.mode, quality: S.q === "max" ? 0 : S.q, audio: S.aq,
+    container: S.container, subs: S.subs, playlist: S.list,
+  });
+}
+
+window.onProgress = (d) => {
+  if (d.status === "downloading") {
+    $("pBar").classList.toggle("indet", d.pct == null);
+    if (d.pct != null) $("pBar").firstElementChild.style.width = d.pct.toFixed(1) + "%";
+    const prefix = d.n > 1 ? `${d.i}/${d.n}  ` : "";
+    $("pWhat").textContent = prefix + (d.kind === "audio" ? "Téléchargement de l'audio" : d.kind === "video" ? "Téléchargement de la vidéo" : "Téléchargement");
+    const parts = [];
+    if (d.pct != null) parts.push(nf.format(d.pct) + " %");
+    if (d.total) parts.push(`${fmtSize(d.done)} / ${fmtSize(d.total)}`);
+    if (d.speed) parts.push(fmtSize(d.speed) + "/s");
+    if (d.eta != null) parts.push("reste " + fmtTime(d.eta));
+    $("pNums").textContent = parts.join("     ");
+  } else if (d.status === "processing") {
+    $("pBar").classList.add("indet");
+    $("pWhat").textContent = d.text; $("pNums").textContent = "";
+  } else if (d.status === "done") {
+    S.busy = false; S.lastFile = d.file; updateCta();
+    $("dTitle").textContent = d.count > 1 ? `${d.count} fichiers téléchargés` : "Téléchargé";
+    $("dSub").textContent = d.name || "";
+    setStatus("done");
+  } else if (d.status === "cancelled") {
+    S.busy = false; updateCta(); setStatus("idle");
+  } else if (d.status === "error") {
+    S.busy = false; updateCta();
+    $("eSub").textContent = d.text || "";
+    setStatus("error");
+  }
+};
+
+/* ---------- Wiring ---------- */
+let debounce;
+$("url").addEventListener("input", () => {
+  updateCta(); clearTimeout(debounce);
+  if (!$("url").value.trim()) { S.token++; resetPreview(); return; }
+  debounce = setTimeout(analyze, 450);
+});
+$("url").addEventListener("keydown", (e) => { if (e.key === "Enter") startDownload(); });
+$("btnPaste").onclick = async () => {
+  const t = api() ? await api().paste() : "";
+  if (t) { $("url").value = t.trim(); updateCta(); analyze(); }
+  $("url").focus();
+};
+$("seg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setMode(b.dataset.mode); });
+$("container").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  S.container = b.dataset.c;
+  for (const x of $("container").children) x.setAttribute("aria-pressed", String(x === b));
+  updateCta();
+});
+$("tSubs").onclick = () => { S.subs = !S.subs; $("tSubs").setAttribute("aria-pressed", String(S.subs)); };
+$("tList").onclick = () => { S.list = !S.list; $("tList").setAttribute("aria-pressed", String(S.list)); updateCta(); };
+$("btnDl").onclick = startDownload;
+$("btnCancel").onclick = () => { $("pWhat").textContent = "Annulation…"; api() && api().cancel(); };
+const pickFolder = async () => { const f = api() && await api().choose_folder(); if (f) $("folder").textContent = f; };
+$("btnFolder").onclick = pickFolder; $("btnFolder2").onclick = pickFolder;
+$("btnOpen").onclick = () => api() && api().open_folder();
+$("btnReveal").onclick = () => api() && api().reveal(S.lastFile || "");
+$("btnDoneOk").onclick = () => setStatus("idle");
+$("btnErrOk").onclick = () => setStatus("idle");
+$("btnClose").onclick = () => api() && api().close();
+$("btnMin").onclick = () => api() && api().minimize();
+
+async function init() {
+  setMode("video");
+  if (!api()) return;
+  const r = await api().init();
+  $("folder").textContent = r.folder;
+  if (r.clipboard && looksLikeUrl(r.clipboard)) { $("url").value = r.clipboard; updateCta(); analyze(); }
+  window.__ready = true;
+}
+window.addEventListener("pywebviewready", init);
+renderChips(); updateCta();
+$("url").focus();
+</script>
+</body>
+</html>
