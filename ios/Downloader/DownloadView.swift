@@ -120,6 +120,7 @@ struct DownloadView: View {
                 PreviewRow(preview: p)
                     .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
             }
+            if model.transfer == nil {
             Section("Format") {
                 if p.hasVideo {
                     Picker("Type", selection: $model.kind) {
@@ -145,7 +146,7 @@ struct DownloadView: View {
                     }
                 }
             }
-            .disabled(model.isBusy)
+            }
         }
     }
 }
@@ -219,7 +220,7 @@ struct BottomBar: View {
     var body: some View {
         if let t = model.transfer {
             TransferPanel(transfer: t)
-        } else if pc.isPaired {
+        } else if pc.isPaired && model.preview != nil {
             Button {
                 model.start()
             } label: {
@@ -307,14 +308,14 @@ struct TransferPanel: View {
                     Button {
                         if let u = URL(string: "photos-redirect://") { openURL(u) }
                     } label: {
-                        Label("Ouvrir Photos", systemImage: "photo.on.rectangle").frame(maxWidth: .infinity)
+                        Text("Ouvrir Photos").lineLimit(1).frame(maxWidth: .infinity)
                     }
                     .secondaryButton()
                 }
                 Button {
                     model.finish()
                 } label: {
-                    Text("Nouveau lien").frame(maxWidth: .infinity)
+                    Text("Nouveau lien").lineLimit(1).frame(maxWidth: .infinity)
                 }
                 .primaryButton()
             }

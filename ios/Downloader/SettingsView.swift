@@ -159,7 +159,7 @@ struct PairingView: View {
                     }
                 }
             }
-            .navigationTitle("Connecter mon PC")
+            .navigationTitle("Connexion")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Annuler") { dismiss() } }
