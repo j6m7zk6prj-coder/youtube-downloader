@@ -247,6 +247,32 @@ main { flex: 1; display: flex; flex-direction: column; gap: 16px; padding: 4px 2
 .msg strong { display: block; font-size: 14px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .msg small { display: block; font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* ---------- iPhone ---------- */
+.phone-btn {
+  position: absolute; right: 14px; top: 8px; z-index: 3; height: 30px; padding: 0 12px 0 10px;
+  border-radius: var(--r-pill); display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12.5px; font-weight: 600; color: var(--ink-2);
+  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12);
+}
+.phone-btn:hover { background: rgba(255,255,255,.14); color: var(--ink); }
+.phone-btn svg { width: 14px; height: 14px; }
+.phone-btn .dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.3); }
+.phone-btn.on .dot { background: var(--mint); box-shadow: 0 0 8px rgba(50,215,75,.8); }
+.phone-pop {
+  position: absolute; right: 14px; top: 46px; z-index: 5; width: 320px; padding: 18px;
+  border-radius: var(--r-lg); display: none;
+}
+.phone-pop.open { display: block; }
+.phone-pop h3 { font-size: 15px; font-weight: 650; }
+.phone-pop p { margin-top: 6px; font-size: 12.5px; line-height: 1.45; color: var(--ink-2); }
+.phone-pop .code {
+  margin: 14px 0 4px; font-size: 34px; font-weight: 700; letter-spacing: .12em;
+  font-variant-numeric: tabular-nums; text-align: center; user-select: text;
+}
+.phone-pop .addr { text-align: center; font-size: 12px; color: var(--ink-3); user-select: text; }
+.phone-pop .row { display: flex; gap: 8px; margin-top: 14px; }
+.phone-pop .row .ghost { flex: 1; }
+
 @media (prefers-reduced-motion: reduce) {
   .aurora i { animation: none; }
   * { transition-duration: .01ms !important; }
@@ -265,7 +291,22 @@ main { flex: 1; display: flex; flex-direction: column; gap: 16px; padding: 4px 2
       <span class="light zoom" aria-hidden="true"></span>
     </div>
     <div class="wtitle">YouTube Downloader</div>
+    <button class="phone-btn" id="btnPhone" aria-expanded="false" aria-controls="phonePop">
+      <span class="dot"></span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="6" y="2.5" width="12" height="19" rx="3"/><path d="M11 18.5h2"/></svg>
+      <span id="phoneLabel">iPhone</span>
+    </button>
   </header>
+  <section class="phone-pop glass" id="phonePop" role="dialog" aria-label="Connecter l'iPhone">
+    <h3>Télécharger depuis l'iPhone</h3>
+    <p>Ouvre l'app sur ton iPhone, connecté au même Wi-Fi que ce PC, puis entre ce code. Laisse ce logiciel ouvert pendant les téléchargements.</p>
+    <div class="code" id="phoneCode">––––––</div>
+    <div class="addr" id="phoneAddr"></div>
+    <div class="row">
+      <button class="ghost" id="btnNewCode">Nouveau code</button>
+      <button class="ghost" id="btnPhoneClose">Fermer</button>
+    </div>
+  </section>
 
   <main>
     <section class="search glass">
@@ -581,11 +622,37 @@ $("btnErrOk").onclick = () => setStatus("idle");
 $("btnClose").onclick = () => api() && api().close();
 $("btnMin").onclick = () => api() && api().minimize();
 
+/* ---------- iPhone ---------- */
+async function refreshPhone(fresh) {
+  if (!api()) return;
+  const p = fresh || await api().phone_info();
+  if (!p.ok) { $("phoneLabel").textContent = "iPhone indisponible"; $("phoneCode").textContent = "—"; $("phoneAddr").textContent = p.error || ""; return; }
+  $("phoneCode").textContent = p.code.slice(0, 3) + " " + p.code.slice(3);
+  $("phoneAddr").textContent = (p.addresses[0] ? `${p.addresses[0]}:${p.port}` : "") + (p.name ? ` · ${p.name}` : "");
+  $("btnPhone").classList.toggle("on", p.connected);
+  $("phoneLabel").textContent = p.connected ? "iPhone connecté" : (p.paired ? "iPhone" : "Connecter l'iPhone");
+}
+function togglePhone(open) {
+  const o = open ?? !$("phonePop").classList.contains("open");
+  $("phonePop").classList.toggle("open", o);
+  $("btnPhone").setAttribute("aria-expanded", String(o));
+  if (o) refreshPhone();
+}
+$("btnPhone").onclick = () => togglePhone();
+$("btnPhoneClose").onclick = () => togglePhone(false);
+$("btnNewCode").onclick = async () => refreshPhone(await api().phone_new_code());
+window.onPhone = (kind, data) => {
+  refreshPhone();
+  if (kind === "paired") togglePhone(false);
+};
+setInterval(() => refreshPhone(), 10000);
+
 async function init() {
   setMode("video");
   if (!api()) return;
   const r = await api().init();
   $("folder").textContent = r.folder;
+  refreshPhone();
   if (r.clipboard && looksLikeUrl(r.clipboard)) { $("url").value = r.clipboard; updateCta(); analyze(); }
   window.__ready = true;
 }

@@ -15,6 +15,7 @@ import time
 import ctypes
 import threading
 import traceback
+import socket
 import subprocess
 
 import webview
@@ -170,6 +171,39 @@ class Api:
         self._busy = False
         self._ffmpeg = find_ffmpeg()
         self._last_push = 0.0
+        self._phone = None
+        self._phone_error = None
+        try:
+            from phone_server import PhoneServer
+            self._phone = PhoneServer(lambda: self._settings, save_settings, self._ffmpeg, self._phone_event)
+            self._phone.start()
+        except Exception as e:
+            self._phone_error = str(e)
+            log_error("Serveur iPhone : " + traceback.format_exc())
+
+    # ----- iPhone -----
+    def _phone_event(self, kind, data=None):
+        try:
+            if self._window:
+                self._window.evaluate_js(f"window.onPhone && window.onPhone({json.dumps(kind)}, {json.dumps(data)})")
+        except Exception:
+            pass
+
+    def phone_info(self):
+        if not self._phone:
+            return {"ok": False, "error": self._phone_error or "Serveur iPhone indisponible."}
+        p = self._phone
+        return {
+            "ok": True, "code": p.code, "port": p.port, "addresses": p.addresses,
+            "name": socket.gethostname(),
+            "connected": time.time() - p.last_seen < 30,
+            "paired": bool(self._settings.get("phone_tokens")),
+        }
+
+    def phone_new_code(self):
+        if self._phone:
+            self._phone.new_code()
+        return self.phone_info()
 
     # ----- fenêtre -----
     def init(self):
@@ -183,6 +217,8 @@ class Api:
 
     def close(self):
         self._cancel.set()
+        if self._phone:
+            self._phone.stop()
         self._window.destroy()
 
     def minimize(self):
@@ -401,8 +437,8 @@ class Api:
 # --------------------------------------------------------------------------- #
 #  Lancement
 # --------------------------------------------------------------------------- #
-def selftest(window):
-    """Utilisé par GitHub Actions : vérifie que l'interface et le pont JS fonctionnent."""
+def selftest(window, api=None):
+    """Utilisé par GitHub Actions : vérifie que l'interface, le pont JS et le serveur iPhone fonctionnent."""
     ok = False
     for _ in range(120):
         try:
@@ -412,8 +448,16 @@ def selftest(window):
         except Exception:
             pass
         time.sleep(0.5)
+    phone = "absent"
+    try:
+        import urllib.request
+        port = api._phone.port
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/info", timeout=10) as r:
+            phone = "OK" if json.loads(r.read()).get("app") == "YouTubeDownloader" else "FAIL"
+    except Exception as e:
+        phone = "FAIL " + str(e)
     with open(os.path.join(os.getcwd(), "selftest_result.txt"), "w") as f:
-        f.write("OK" if ok else "FAIL")
+        f.write(("OK" if ok else "FAIL") + "\nphone=" + phone)
     window.destroy()
 
 
@@ -430,7 +474,7 @@ def main():
     api._window = window
     window.events.shown += lambda: round_corners(APP_NAME)
     if "--selftest" in sys.argv:
-        webview.start(selftest, window)
+        webview.start(selftest, (window, api))
     else:
         webview.start()
 

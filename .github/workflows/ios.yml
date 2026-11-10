@@ -1,0 +1,115 @@
+name: Compiler l'app iPhone
+
+on:
+  push:
+    branches: [main]
+    paths: ["ios/**", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Choisir Xcode
+        run: |
+          XC=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
+          if [ -z "$XC" ]; then XC=$(ls -d /Applications/Xcode_*.app | grep -vi beta | sort -V | tail -1); fi
+          sudo xcode-select -s "$XC"
+          xcodebuild -version
+
+      - name: Préparer le projet
+        run: |
+          mkdir -p Downloader/Assets.xcassets/AppIcon.appiconset
+          echo '{ "info" : { "author" : "xcode", "version" : 1 } }' > Downloader/Assets.xcassets/Contents.json
+          cp icon.png Downloader/Assets.xcassets/AppIcon.appiconset/icon.png
+          echo '{ "images" : [ { "filename" : "icon.png", "idiom" : "universal", "platform" : "ios", "size" : "1024x1024" } ], "info" : { "author" : "xcode", "version" : 1 } }' > Downloader/Assets.xcassets/AppIcon.appiconset/Contents.json
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Compiler pour iPhone
+        run: |
+          set -o pipefail
+          xcodebuild -project Downloader.xcodeproj -target Downloader -configuration Release -sdk iphoneos \
+            SYMROOT="$PWD/build" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build > build.log 2>&1 || true
+          if grep -q "BUILD SUCCEEDED" build.log && test -f build/Release-iphoneos/Downloader.app/Downloader; then
+            echo "BUILD SUCCEEDED"
+          else
+            echo "===== ERREURS ====="
+            grep -n -E "error:" build.log | head -40 || true
+            tail -30 build.log
+            exit 1
+          fi
+
+      - name: Emballer le .ipa
+        run: |
+          mkdir -p Payload
+          cp -R build/Release-iphoneos/Downloader.app Payload/
+          zip -qry Downloader.ipa Payload
+
+      - name: Publier dans Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ios-latest
+          name: Downloader pour iPhone (dernière version)
+          body: Téléchargez **Downloader.ipa** ci-dessous, puis installez-le avec iLoader.
+          make_latest: false
+          files: ios/Downloader.ipa
+
+      - name: Compiler pour le simulateur
+        run: |
+          set -o pipefail
+          xcodebuild -project Downloader.xcodeproj -target Downloader -configuration Debug -sdk iphonesimulator \
+            -arch arm64 SYMROOT="$PWD/simbuild" CODE_SIGNING_ALLOWED=NO build > sim.log 2>&1 || (grep -n "error:" sim.log | head -20; exit 1)
+
+      - name: Captures d'écran (simulateur)
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)['devices']
+          c=[x for k,v in d.items() if 'iOS' in k for x in v]
+          p=[x for x in c if x['name']=='iPhone 17 Pro'] or [x for x in c if x['name'].startswith('iPhone 17')] or [x for x in c if x['name'].startswith('iPhone')]
+          print(p[-1]['udid'])")
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3
+          xcrun simctl install "$UDID" simbuild/Debug-iphonesimulator/Downloader.app
+          mkdir -p shots
+          shot () {
+            xcrun simctl terminate "$UDID" com.tepsko.downloader 2>/dev/null || true
+            xcrun simctl launch "$UDID" com.tepsko.downloader "${@:2}"
+            sleep 7
+            xcrun simctl io "$UDID" screenshot "shots/$1.png"
+          }
+          xcrun simctl ui "$UDID" appearance light
+          shot 01-vide -demo empty
+          shot 02-apercu -demo preview
+          shot 03-sur-pc -demo progress
+          shot 04-transfert -demo transfer
+          shot 05-termine -demo done
+          shot 06-erreur -demo error
+          shot 07-historique -demo empty -tab history
+          shot 08-reglages -demo preview -sheet settings
+          shot 09-connexion -demo empty -sheet pair
+          xcrun simctl ui "$UDID" appearance dark
+          shot 10-apercu-sombre -demo preview
+          shot 11-sur-pc-sombre -demo progress
+          shot 12-historique-sombre -demo empty -tab history
+          ls -la shots
+
+      - name: Envoyer les captures (branche screenshots)
+        run: |
+          cd shots
+          git init -q -b screenshots
+          git -c user.name=ci -c user.email=ci@example.com add -A
+          git -c user.name=ci -c user.email=ci@example.com commit -qm "Captures $GITHUB_SHA"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" screenshots
