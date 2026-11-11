@@ -103,7 +103,24 @@ def read_clipboard():
 
 
 def is_youtube(text):
-    return bool(re.match(r"^\s*(https?://)?([\w-]+\.)?(youtube\.com|youtu\.be)/", text or "", re.I))
+    """Vrai pour un lien web (YouTube, TikTok, Instagram, X…)."""
+    return bool(re.match(r"^\s*(https?://)?([\w-]+\.)+[a-z]{2,}/\S+", text or "", re.I))
+
+
+PLATFORMS = {
+    "youtube": "YouTube", "tiktok": "TikTok", "instagram": "Instagram", "twitter": "X",
+    "facebook": "Facebook", "reddit": "Reddit", "vimeo": "Vimeo", "dailymotion": "Dailymotion",
+    "twitch": "Twitch", "soundcloud": "SoundCloud", "pinterest": "Pinterest", "snapchat": "Snapchat",
+    "threads": "Threads", "bilibili": "Bilibili",
+}
+
+
+def platform_name(info):
+    key = (info.get("extractor_key") or info.get("extractor") or "").lower()
+    for k, v in PLATFORMS.items():
+        if k in key:
+            return v
+    return info.get("extractor_key") or ""
 
 
 def clean_error(e):
@@ -115,9 +132,12 @@ def clean_error(e):
     if "Video unavailable" in msg:
         return "Cette vidéo n'est pas disponible."
     if "Sign in to confirm your age" in msg:
-        return "Vidéo soumise à une limite d'âge : connexion YouTube requise."
+        return "Vidéo soumise à une limite d'âge : connexion au site requise."
+    low = msg.lower()
+    if "login" in low or "log in" in low or "cookies" in low or "sign in" in low:
+        return "Ce site demande d'être connecté pour cette vidéo (vidéo privée ou réservée aux abonnés)."
     if "Unsupported URL" in msg or "is not a valid URL" in msg:
-        return "Ce lien n'est pas un lien YouTube valide."
+        return "Ce lien n'est pas pris en charge."
     if "getaddrinfo" in msg or "Failed to resolve" in msg:
         return "Pas de connexion Internet."
     return msg[:300] or "Erreur inconnue."
@@ -297,12 +317,18 @@ class Api:
         max_h = max(sizes) if sizes else 0
         labels = {4320: "8K", 2160: "4K", 1440: "1440p", 1080: "1080p", 720: "720p", 480: "480p", 360: "360p"}
 
+        title = info.get("title") or info.get("description") or "Vidéo"
+        if len(title) > 140:
+            title = title[:137].rstrip() + "…"
+        w, h = info.get("width"), info.get("height")
         return {
-            "title": info.get("title"),
-            "channel": info.get("uploader") or info.get("channel"),
+            "title": title,
+            "platform": platform_name(info),
+            "portrait": bool(w and h and h > w * 1.1),
+            "channel": info.get("uploader") or info.get("channel") or info.get("creator"),
             "views": info.get("view_count"),
             "duration": duration,
-            "thumbnail": info.get("thumbnail"),
+            "thumbnail": info.get("thumbnail") or ((info.get("thumbnails") or [{}])[-1].get("url")),
             "is_playlist": False,
             "has_list": has_list,
             "count": 1,
@@ -371,7 +397,7 @@ class Api:
                     self._push({"status": "processing", "text": text + "…"}, force=True)
 
         ydl_opts = {
-            "outtmpl": os.path.join(self._folder, "%(title)s [%(id)s].%(ext)s"),
+            "outtmpl": os.path.join(self._folder, "%(title).90B [%(id)s].%(ext)s"),
             "noplaylist": not o.get("playlist"),
             "progress_hooks": [progress_hook],
             "postprocessor_hooks": [pp_hook],
@@ -403,7 +429,8 @@ class Api:
             container = o.get("container") or "mp4"
             sort = [f"res:{h}"] if h else ["res"]
             if container == "mp4":
-                sort.append("ext:mp4:m4a")  # flux natifs MP4/AAC : lisibles partout
+                # À qualité égale : H.264 + AAC en MP4, lisibles partout (TikTok propose aussi du HEVC).
+                sort += ["vcodec:h264", "ext:mp4:m4a"]
             ydl_opts["format"] = "bv*+ba/b"
             ydl_opts["format_sort"] = sort
             ydl_opts["merge_output_format"] = container
@@ -414,7 +441,7 @@ class Api:
 
         try:
             os.makedirs(self._folder, exist_ok=True)
-            self._push({"status": "processing", "text": "Connexion à YouTube…"}, force=True)
+            self._push({"status": "processing", "text": "Connexion au site…"}, force=True)
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
             if not files:
@@ -467,12 +494,11 @@ def main():
         html = f.read()
     window = webview.create_window(
         APP_NAME, html=html, js_api=api,
-        width=1040, height=700, resizable=False,
-        frameless=True, easy_drag=False,
+        width=1040, height=720, resizable=True, min_size=(860, 640),
         background_color="#0c0a1c",
     )
     api._window = window
-    window.events.shown += lambda: round_corners(APP_NAME)
+    window.events.closing += lambda: api._phone.stop() if api._phone else None
     if "--selftest" in sys.argv:
         webview.start(selftest, (window, api))
     else:

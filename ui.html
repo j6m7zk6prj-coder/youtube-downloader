@@ -79,15 +79,8 @@ button:disabled { cursor: default; }
 
 /* ---------- Window chrome ---------- */
 .app { position: relative; z-index: 1; height: 100vh; display: flex; flex-direction: column; }
-.titlebar { height: 46px; flex: none; display: flex; align-items: center; padding: 0 18px; position: relative; }
-.lights { display: flex; gap: 8px; position: relative; z-index: 2; }
-.light { width: 13px; height: 13px; border-radius: 50%; display: grid; place-items: center; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.25); }
-.light svg { width: 7px; height: 7px; opacity: 0; transition: opacity .15s; }
-.lights:hover .light svg { opacity: .7; }
-.light.close { background: #ff5f57; }
-.light.min { background: #febc2e; }
-.light.zoom { background: rgba(255,255,255,.22); cursor: default; }
-.wtitle { position: absolute; inset: 0; display: grid; place-items: center; font-size: 13px; font-weight: 600; color: var(--ink-2); pointer-events: none; }
+.titlebar { height: 46px; flex: none; display: flex; align-items: center; padding: 0 26px; position: relative; }
+.sites { font-size: 13px; font-weight: 600; color: var(--ink-2); }
 
 main { flex: 1; display: flex; flex-direction: column; gap: 16px; padding: 4px 26px 24px; min-height: 0; }
 
@@ -124,6 +117,7 @@ main { flex: 1; display: flex; flex-direction: column; gap: 16px; padding: 4px 2
   background: rgba(0,0,0,.22); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
 }
 .thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .4s; }
+.thumb.portrait img { object-fit: contain; }
 .thumb.has-img img { opacity: 1; }
 .thumb .badge {
   position: absolute; right: 10px; bottom: 10px; padding: 4px 9px; border-radius: 8px;
@@ -288,13 +282,8 @@ main { flex: 1; display: flex; flex-direction: column; gap: 16px; padding: 4px 2
 <div class="grain" aria-hidden="true"></div>
 
 <div class="app">
-  <header class="titlebar pywebview-drag-region">
-    <div class="lights">
-      <button class="light close" id="btnClose" aria-label="Fermer"><svg viewBox="0 0 10 10"><path d="M2 2l6 6M8 2l-6 6" stroke="#4d0000" stroke-width="1.6" stroke-linecap="round"/></svg></button>
-      <button class="light min" id="btnMin" aria-label="Réduire"><svg viewBox="0 0 10 10"><path d="M2 5h6" stroke="#5a3a00" stroke-width="1.6" stroke-linecap="round"/></svg></button>
-      <span class="light zoom" aria-hidden="true"></span>
-    </div>
-    <div class="wtitle">YouTube Downloader</div>
+  <header class="titlebar">
+    <div class="sites">YouTube · TikTok · Instagram · X · et plus de 1 000 sites</div>
   </header>
   <button class="phone-btn" id="btnPhone" aria-expanded="false" aria-controls="phonePop">
       <span class="dot"></span>
@@ -315,7 +304,7 @@ main { flex: 1; display: flex; flex-direction: column; gap: 16px; padding: 4px 2
   <main>
     <section class="search glass">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
-      <input id="url" type="url" placeholder="Collez un lien YouTube" spellcheck="false" autocomplete="off" aria-label="Lien YouTube">
+      <input id="url" type="url" placeholder="Collez un lien YouTube, TikTok, Instagram, X…" spellcheck="false" autocomplete="off" aria-label="Lien de la vidéo">
       <button class="pill-btn" id="btnPaste">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/></svg>
         Coller
@@ -441,7 +430,7 @@ function fmtTime(s) {
   s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
   return h ? `${h}:${String(m).padStart(2, "0")}:${String(x).padStart(2, "0")}` : `${m}:${String(x).padStart(2, "0")}`;
 }
-function looksLikeUrl(v) { return /^(https?:\/\/)?([\w-]+\.)?(youtube\.com|youtu\.be|music\.youtube\.com)\//i.test(v.trim()); }
+function looksLikeUrl(v) { return /^(https?:\/\/)?([\w-]+\.)+[a-z]{2,}\/\S+/i.test(v.trim()); }
 
 /* ---------- Chips ---------- */
 function renderChips() {
@@ -542,7 +531,8 @@ async function analyze() {
   $("badgeDur").classList.toggle("on", !!$("badgeDur").textContent);
   $("title").textContent = info.title || "Sans titre";
   $("sub").className = "";
-  $("sub").textContent = info.is_playlist ? `Playlist de ${info.channel || "YouTube"}` : (info.channel || "");
+  $("sub").textContent = info.is_playlist ? `Playlist de ${info.channel || info.platform || ""}` : [info.platform, info.channel].filter(Boolean).join(" · ");
+  $("thumb").classList.toggle("portrait", !!info.portrait);
   if (!info.is_playlist && info.views) { const v = document.createElement("span"); v.className = "views"; v.textContent = nf.format(info.views) + " vues"; $("sub").appendChild(v); }
   $("tList").classList.toggle("hidden", !info.has_list);
   if (info.is_playlist && !S.list) { S.list = true; $("tList").setAttribute("aria-pressed", "true"); }
@@ -626,8 +616,6 @@ $("btnOpen").onclick = () => api() && api().open_folder();
 $("btnReveal").onclick = () => api() && api().reveal(S.lastFile || "");
 $("btnDoneOk").onclick = () => setStatus("idle");
 $("btnErrOk").onclick = () => setStatus("idle");
-$("btnClose").onclick = () => api() && api().close();
-$("btnMin").onclick = () => api() && api().minimize();
 
 /* ---------- iPhone ---------- */
 async function refreshPhone(fresh) {
